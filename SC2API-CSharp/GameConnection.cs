@@ -47,7 +47,7 @@ namespace SC2API_CSharp
         public async Task CreateGame(String mapName, Race opponentRace, Difficulty opponentDifficulty)
         {
             RequestCreateGame createGame = new RequestCreateGame();
-            createGame.Realtime = false;
+            createGame.Realtime = true;
 
             string mapPath = Path.Combine(starcraftDir, "Maps", mapName);
             if (!File.Exists(mapPath))
@@ -97,6 +97,7 @@ namespace SC2API_CSharp
             joinGame.Race = race;
 
             joinGame.Options = new InterfaceOptions();
+            joinGame.PlayerName = "QueenKayden";
             joinGame.Options.Raw = true;
             joinGame.Options.Score = true;
 

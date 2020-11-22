@@ -7,9 +7,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SC2APIProtocol", "SC2APIPro
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SC2API-CSharp", "SC2API-CSharp\SC2API-CSharp.csproj", "{3A80D8CD-E915-4094-8ED8-890B8F4EE72F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExampleBot", "ExampleBot\ExampleBot.csproj", "{50579668-A3FB-43F4-B88C-05995BE4C8CC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "QueenKayden", "ExampleBot\QueenKayden.csproj", "{50579668-A3FB-43F4-B88C-05995BE4C8CC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCoreRunner", "DotnetCoreRunner\DotnetCoreRunner.csproj", "{B24F9573-4A58-43D5-824B-92C5E51281F8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotnetCoreRunner", "DotnetCoreRunner\DotnetCoreRunner.csproj", "{B24F9573-4A58-43D5-824B-92C5E51281F8}"
 	ProjectSection(ProjectDependencies) = postProject
 		{50579668-A3FB-43F4-B88C-05995BE4C8CC} = {50579668-A3FB-43F4-B88C-05995BE4C8CC}
 	EndProjectSection

@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ExampleBot\ExampleBot.csproj" />
+    <ProjectReference Include="..\ExampleBot\QueenKayden.csproj" />
   </ItemGroup>
 
 </Project>
