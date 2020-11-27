@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 
 namespace ExampleBot.Copied
-{
+{    
     class UnitTypes
     {
         public static Dictionary<uint, UnitTypeData> LookUp = new Dictionary<uint, UnitTypeData>();
@@ -199,6 +199,10 @@ namespace ExampleBot.Copied
         public static uint MINERAL_FIELD_450 = 1982;
         public static uint MINERAL_FIELD_OPAQUE = 1983;
         public static uint MINERAL_FIELD_OPAQUE_900 = 1984;
+
+        // my
+        public static int HATA_ABILITY_BUILD_OVER = 1344;
+        //
 
         public static HashSet<uint> BuildingTypes = new HashSet<uint>
             {
