@@ -11,11 +11,9 @@ namespace QueenKayden.GameUtils
         public List<Unit> MineralUnits { get; set; }
         public Point Position { get; set; }
         public ulong BaseId { get; set; }
-        public bool Used => BaseId > 0;
         // temp
         public bool OverSent { get; set; }
-        public bool Busy { get; set; }
-        public bool Main { get; set; }
+        public bool Taken { get; set; }
         public float DistanceToMain { get; set; }
     }
 }

@@ -6,13 +6,13 @@ namespace SC2Sharp
     public class Program
     {
         // Settings for your bot.
-        private static Bot bot = new QueenKayden();
+        private static Bot bot = new Bot();
         private static Race race = Race.Zerg;
 
         // Settings for single player mode.
         private static string mapName = @"TritonLE.SC2Map";
         private static Race opponentRace = Race.Random;
-        private static Difficulty opponentDifficulty = Difficulty.VeryEasy;
+        private static Difficulty opponentDifficulty = Difficulty.VeryHard;
 
         /* The main entry point for the bot.
          * This will start the Stacraft 2 instance and connect to it.

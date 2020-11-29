@@ -1,10 +1,10 @@
 {
   "Bots": {
-    "<YourBotName>": {
-      "Race": "<YourBotRace>",
+    "ututu": {
+      "Race": "Zerg",
       "Type": "DotNetCore",
       "RootPath": "./",
-      "FileName": "<YourBotName>.dll",
+      "FileName": "ExampleBot.dll",
       "Debug": true
     }
   }

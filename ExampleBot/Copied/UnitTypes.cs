@@ -202,6 +202,7 @@ namespace ExampleBot.Copied
 
         // my
         public static int HATA_ABILITY_BUILD_OVER = 1344;
+        public static int HATA_ABILITY_BUILD_QUEEN = 1632;
         //
 
         public static HashSet<uint> BuildingTypes = new HashSet<uint>

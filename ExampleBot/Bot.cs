@@ -9,12 +9,27 @@ using Action = SC2APIProtocol.Action;
 
 namespace SC2Sharp
 {
-    class QueenKayden : SC2API_CSharp.Bot
+    class Bot : SC2API_CSharp.Bot
     {
         public Stopwatch GameTime { get; set; }
         public ResponseGameInfo GameInfo { get; set; }
         public uint PlayerId { get; set; }
         public List<Base> Bases { get; set; }
+        public ulong MainBase { get; set; }
+
+        public Base GetMainBase()
+        {
+            foreach(var b in Bases)
+            {
+                if (b.BaseId == MainBase)
+                    return b;
+            }
+
+            return null;
+        }
+
+        
+        public ulong BuildingDrone { get; set; }
 
         private Point2D EnemyStartPosition
         {
@@ -47,15 +62,18 @@ namespace SC2Sharp
         public IEnumerable<Action> OnFrame(ResponseObservation observation)
         {
             var actions = new List<Action>();
-            InitHatas(observation);            
+            InitHatas(observation);
 
-            //BuildPool(observation, actions);
-            //BuildDrones(observation, actions);
-            //BuildZerlings(observation, actions);
+            MineralOptimization(observation, actions);
+            MineralOptimizationByNikita(observation, actions);
+            BuildPool(observation, actions);
+            BuildDrones(observation, actions);
+            BuildZerlings(observation, actions);
             AttackZerglings(observation, actions);
             MoveOver(observation, actions);
             BuildHata(observation, actions);
             BuildOver(observation, actions);
+            BuildQueen(observation, actions);
 
             foreach (var ba in CustomActionList)
             {
@@ -72,8 +90,29 @@ namespace SC2Sharp
 
             var hatas = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).ToList();
 
-            if (hatas.Count() > 1 || hatas.Count() == 0)
-                return;
+            if (hatas.Count() != Bases.Where(b => b.Taken).Count())
+            {
+                foreach (var h in hatas)
+                {
+                    foreach (var b in Bases)
+                    {
+                        if (Dist.Distance(b.Position, h.Pos) < 5)
+                        {
+                            b.Taken = true;
+                            b.Position = h.Pos;
+                            b.BaseId = h.Tag;
+                        }
+                    }
+                }
+            }
+
+            if (MainBase == 0 && hatas != null)
+            {
+                MainBase = hatas.FirstOrDefault().Tag;
+            }
+
+            //if (hatas.Count() > 1 || hatas.Count() == 0)
+            //    return;            
 
             var minDist = float.MaxValue;
             var bas = Bases[0];
@@ -86,13 +125,12 @@ namespace SC2Sharp
                     bas = b;
                 }
             }
-
-            bas.Main = true;
+            
             bas.BaseId = hatas[0].Tag;
 
             foreach(var b in Bases)
             {
-                if (b.Main)
+                if (b.BaseId == MainBase)
                     continue;
 
                 b.DistanceToMain = Dist.Distance(hatas[0].Pos, b.Position);
@@ -101,6 +139,11 @@ namespace SC2Sharp
 
         private void BuildPool(ResponseObservation observation, List<Action> actions)
         {
+            var hatas = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).ToList();
+
+            if (hatas.Count() < 2)
+                return;
+
             int buildPoolAbilityId = 1155; //pool
 
             var pool = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.SPAWNING_POOL && d.Alliance == Alliance.Self).FirstOrDefault();
@@ -111,20 +154,151 @@ namespace SC2Sharp
             if (observation.Observation.PlayerCommon.Minerals < 200)
                 return;
 
-            var hata = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).FirstOrDefault();
+            var b2 = GetBaseForPool();
 
+            if (b2 == null)
+                return;
+
+            //var hata = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).FirstOrDefault();
 
             var command = new ActionRawUnitCommand
             {
                 AbilityId = buildPoolAbilityId,
-                TargetWorldSpacePos = new Point2D { X = hata.Pos.X + 4, Y = hata.Pos.Y + 1},
+                TargetWorldSpacePos = new Point2D { X = b2.Position.X + 4, Y = b2.Position.Y + 1},
                 QueueCommand = true
             };
 
-            command.UnitTags.Add(GetDrone(observation).Tag);
-
+            command.UnitTags.Add(GetBuldingDrone(observation).Tag);
 
             actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });
+        }
+
+        public Base GetBaseForPool()
+        {
+            return Bases.OrderBy(b => b.DistanceToMain).ToList()[2];
+        }
+
+        public void MineralOptimization(ResponseObservation observation, List<Action> actions)
+        {
+            var lazyDrone = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.DRONE && d.Alliance == Alliance.Self && d.Orders.Count() == 0).FirstOrDefault();
+
+            if (lazyDrone == null)
+                return;
+
+            var bm = GetBoringMineral(observation);
+
+            if (bm == 0)
+                return;
+
+            var mineral = observation.Observation.RawData.Units.Where(m => m.Tag == bm).FirstOrDefault();
+
+            if (mineral == null)
+                return;
+
+            var command = new ActionRawUnitCommand
+            {
+                AbilityId = 1183,
+                TargetWorldSpacePos = new Point2D { X = mineral.Pos.X, Y = mineral.Pos.Y},
+                QueueCommand = true,
+                TargetUnitTag = bm
+            };            
+
+            command.UnitTags.Add(lazyDrone.Tag);
+
+            actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });
+        }
+
+        public void MineralOptimizationByNikita(ResponseObservation observation, List<Action> actions)
+        {
+            var hatas = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).ToList();
+
+            if (hatas.Count() < 2)
+                return;
+
+            foreach (var h in hatas)
+            {
+                if (h.AssignedHarvesters <= h.IdealHarvesters)
+                    continue;
+                
+                var boringHata = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self && d.IdealHarvesters > d.AssignedHarvesters).FirstOrDefault();
+
+                if (boringHata == null)
+                    return;
+
+                var drones = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.DRONE && d.Alliance == Alliance.Self);
+
+                foreach (var d in drones)
+                {
+                    if (IsNeightbors(d, h) && d.Orders.Where(a => a.AbilityId == 1183).Any())
+                    {
+                        var bse = Bases.Where(b => b.BaseId == boringHata.Tag).FirstOrDefault();
+
+                        Unit mineralSent = GetClosestMineral(observation, boringHata.Pos);
+
+                        var command = new ActionRawUnitCommand
+                        {
+                            AbilityId = 1183,
+                            TargetWorldSpacePos = new Point2D { X = mineralSent.Pos.X, Y = mineralSent.Pos.Y },
+                            QueueCommand = true,
+                            TargetUnitTag = mineralSent.Tag
+                        };
+
+                        command.UnitTags.Add(d.Tag);
+
+                        actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });
+                        return;
+                    }
+                }
+            }
+        }
+
+        public Unit GetClosestMineral(ResponseObservation observation, Point target) 
+        {
+            var minerals = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.MINERAL_FIELD || d.UnitType == UnitTypes.MINERAL_FIELD_450 || d.UnitType == UnitTypes.MINERAL_FIELD_750 || d.UnitType == UnitTypes.MINERAL_FIELD_OPAQUE || d.UnitType == UnitTypes.MINERAL_FIELD_OPAQUE_900);
+
+            double minDist = -1;
+            Unit mineralReturn = null;
+
+            foreach (var m in minerals)
+            {
+                var distance = System.Math.Sqrt((target.X - m.Pos.X) * (target.X - m.Pos.X) + (target.Y - m.Pos.Y) * (target.Y - m.Pos.Y));
+                if (distance < minDist || minDist == -1)
+                {
+                    minDist = distance;
+                    mineralReturn = m;
+                }
+            }
+            return mineralReturn;
+        }
+
+        public ulong GetBoringMineral(ResponseObservation observation)
+        {
+            foreach (var bs in Bases.Where(b => b.Taken).OrderByDescending(b => b.DistanceToMain))
+            {
+                foreach (var min in bs.MineralUnits)
+                {
+                    var mineral = observation.Observation.RawData.Units.Where(m => m.Tag == min.Tag).FirstOrDefault();
+
+                    if (mineral == null)
+                        continue;
+
+                    var workersCount = 0;
+                    var drones = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.DRONE && d.Alliance == Alliance.Self);
+                    foreach (var d in drones)
+                    {
+                        if (d.Orders.Count() == 0)
+                            continue;
+
+                        if (d.Orders.Where(o => o.TargetUnitTag == min.Tag).Any())
+                            workersCount++;
+                    }
+
+                    if (workersCount < 1)
+                        return min.Tag;
+                }
+            }
+
+            return 0;
         }
 
         public Unit GetDrone(ResponseObservation observation)
@@ -137,6 +311,31 @@ namespace SC2Sharp
                     return d;
             }
 
+            return drones.FirstOrDefault();
+        }
+
+        public Unit GetBuldingDrone(ResponseObservation observation)
+        {
+            Unit drone = null;
+            if (BuildingDrone > 0)
+                drone = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.DRONE && d.Alliance == Alliance.Self && d.Tag == BuildingDrone).FirstOrDefault();
+
+            if (drone != null)
+                return drone;
+
+            var drones = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.DRONE && d.Alliance == Alliance.Self);
+            foreach (var d in drones)
+            {
+                if (d.Orders.Count() == 0)
+                {
+                    BuildingDrone = d.Tag;
+                    
+                    return d;
+                }
+            }
+
+            BuildingDrone = drones.FirstOrDefault().Tag;
+            
             return drones.FirstOrDefault();
         }
 
@@ -160,7 +359,11 @@ namespace SC2Sharp
             if (over == null)
                 return;
 
-            var newBase = Bases.Where(b => !b.Busy && !b.OverSent).OrderBy(b => b.DistanceToMain).FirstOrDefault();
+            var newBase = Bases.Where(b => !b.Taken && !b.OverSent).OrderBy(b => b.DistanceToMain).FirstOrDefault();
+            
+            if (newBase == null)
+                return;
+
             newBase.OverSent = true;
 
             var command = new ActionRawUnitCommand
@@ -173,27 +376,6 @@ namespace SC2Sharp
             command.QueueCommand = true;
 
             actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });
-
-
-            /*
-            var hata = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).FirstOrDefault();
-
-            var over = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.OVERLORD && d.Alliance == Alliance.Self).FirstOrDefault();
-
-            float EnemyPositionX = 0;
-            float EnemyPositionY = 0;
-
-            var command = new ActionRawUnitCommand
-            {
-                AbilityId = 1, //1155 - pool,
-                TargetWorldSpacePos = new Point2D { X = EnemyPositionX, Y = EnemyPositionY },
-            };
-
-            command.UnitTags.Add(over.Tag);
-            command.QueueCommand = true;
-
-            actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });
-            */
         }
 
         private void BuildZerlings(ResponseObservation observation, List<Action> actions)
@@ -220,9 +402,12 @@ namespace SC2Sharp
 
         private void BuildDrones(ResponseObservation observation, List<Action> actions)
         {
-            var drones = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.DRONE && d.Alliance == Alliance.Self);            
+            var drones = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.DRONE && d.Alliance == Alliance.Self);
 
-            if (drones.Count() >= 14)
+            var pool = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.SPAWNING_POOL && d.Alliance == Alliance.Self).FirstOrDefault();
+
+
+            if (pool != null &&  observation.Observation.PlayerCommon.FoodArmy < observation.Observation.PlayerCommon.FoodWorkers + 10)
                 return;
 
             foreach (var l in observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.LARVA && d.Alliance == Alliance.Self))
@@ -245,7 +430,7 @@ namespace SC2Sharp
                 return;
 
 
-            if (observation.Observation.PlayerCommon.Minerals < 300)
+            if (observation.Observation.PlayerCommon.Minerals < 100)
                 return;
 
             if (AbilityInProgress(observation, UnitTypes.HATA_ABILITY_BUILD_OVER))
@@ -266,13 +451,36 @@ namespace SC2Sharp
             actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });
         }
 
+        private void BuildQueen(ResponseObservation observation, List<Action> actions)
+        {
+            if (observation.Observation.PlayerCommon.Minerals < 200)
+                return;
+
+            if (AbilityInProgress(observation, UnitTypes.HATA_ABILITY_BUILD_QUEEN))
+                return;
+
+            var hata = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).FirstOrDefault();
+
+            if (hata == null)
+                return;
+
+            var command = new ActionRawUnitCommand
+            {
+                AbilityId = UnitTypes.HATA_ABILITY_BUILD_QUEEN,
+                QueueCommand = true
+            };
+            command.UnitTags.Add(hata.Tag);
+
+            actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });
+        }
+
         private void AttackZerglings(ResponseObservation observation, List<Action> actions)
         {
             var hata = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).FirstOrDefault();
 
             var zerglings = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.ZERGLING && d.Alliance == Alliance.Self);
 
-            if(zerglings.Count() < 20)
+            if(zerglings.Count() < 40)
             {
                 return;
             }
@@ -297,12 +505,11 @@ namespace SC2Sharp
             if (observation.Observation.PlayerCommon.Minerals < 300)
                 return;
 
-            if (Bases.Where(b => b.Busy).Count() > 2)
+            if (Bases.Where(b => b.Taken).Count() > 2)
                 return;
 
 
-            var newBase = Bases.Where(b => !b.Busy).OrderBy(b => b.DistanceToMain).FirstOrDefault();
-            newBase.Busy = true;
+            var newBase = GetBaseForPool();
 
             var command = new ActionRawUnitCommand
             {
@@ -311,49 +518,13 @@ namespace SC2Sharp
                 QueueCommand = true
             };
 
-            command.UnitTags.Add(GetDrone(observation).Tag);
+            command.UnitTags.Add(GetBuldingDrone(observation).Tag);
 
-            actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });
-
-            /*
-            var hatches = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).ToList();
-
-            var mainHata = GetMainHata(hatches);
-
-            if (observation.Observation.PlayerCommon.Minerals < 500 && hatches.Count() >= 3)
-                return;
-
-            if (observation.Observation.PlayerCommon.Minerals < 300 && hatches.Count() >= 2)
-                return;
-
-
-            var hata = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.HATCHERY && d.Alliance == Alliance.Self).FirstOrDefault();
-
-            var drone = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.DRONE && d.Alliance == Alliance.Self).FirstOrDefault();
-            var Position = -1;
-            
-            if (hata.Pos.Y < 80)
-            {
-                Position = 1;
-            }
-                var command = new ActionRawUnitCommand
-            {
-                AbilityId = 1152, 
-                TargetWorldSpacePos = new Point2D { X = mainHata.Pos.X, Y = mainHata.Pos.Y + (hatches.Count()*5 * Position) },
-                QueueCommand = true
-            };
-
-            command.UnitTags.Add(GetDrone(observation).Tag);
-
-            actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });
-            */
+            actions.Add(new Action { ActionRaw = new ActionRaw { UnitCommand = command } });            
         }
 
         public void FindBaseLocations(ResponseObservation observation)
         {
-            if (Bases != null)
-                return;
-
             Bases = new List<Base>();
 
             var minerals = observation.Observation.RawData.Units.Where(d => d.UnitType == UnitTypes.MINERAL_FIELD || d.UnitType == UnitTypes.MINERAL_FIELD_450 || d.UnitType == UnitTypes.MINERAL_FIELD_750 || d.UnitType == UnitTypes.MINERAL_FIELD_OPAQUE || d.UnitType == UnitTypes.MINERAL_FIELD_OPAQUE_900);
@@ -389,9 +560,6 @@ namespace SC2Sharp
 
         public void SetBasePosionsByMinerals()
         {
-            if (Bases[0].Position != null)
-                return;
-
             foreach (var b in Bases)
             {
                 b.Position = GetBaseByMinerals(b.MineralUnits);
@@ -402,33 +570,6 @@ namespace SC2Sharp
         {
             var incXY = 3.5f;
 
-            /*
-            var baselocaion = minerals.FirstOrDefault().Pos;
-
-            var koefX = GameInfo.StartRaw.MapSize.X / 2 - baselocaion.X < 0 ? -1 : 1;
-            var koefY = GameInfo.StartRaw.MapSize.Y / 2 - baselocaion.Y < 0 ? -1 : 1;
-
-            var baselocaionX = minerals.FirstOrDefault().Pos.X + 100*koefX;
-            var baselocaionY = minerals.FirstOrDefault().Pos.Y + 100*koefY;
-
-            var prevLocation = new Point { X = baselocaionX, Y = baselocaionY };
-            
-            Point newLocation;
-            do
-            {
-                newLocation = TryCutDistXY(baselocaionX, baselocaionY, koefX, koefY, minerals);
-
-                if (newLocation.X == prevLocation.X && newLocation.Y == prevLocation.Y)
-                    break;
-
-                prevLocation.X = newLocation.X;
-                prevLocation.Y = newLocation.Y;
-            }
-            while (true);
-
-            return newLocation;
-            */
-
             if (minerals.Count < 2)
                 throw new System.Exception("wrong base. less than 2 minerals!");
             
@@ -436,31 +577,6 @@ namespace SC2Sharp
 
             var min1 = outsideMinerals[0];
             var min2 = outsideMinerals[1];
-            /*
-                        var xAdd = (min1.Pos.X < min2.Pos.X) ? incXY : -incXY;
-                        var yAdd = (min1.Pos.Y < min2.Pos.Y) ? incXY : -incXY;
-
-                        var posBaseLoc1 = new Point
-                        {
-                            X = min1.Pos.X + xAdd,
-                            Y = min2.Pos.Y + yAdd
-                        };
-
-                        var posBaseLoc2 = new Point
-                        {
-                            X = min2.Pos.X + xAdd,
-                            Y = min1.Pos.Y + yAdd
-                        };
-
-                        var finalpos = posBaseLoc1;
-
-                        if (MinDistToMineral(posBaseLoc1, minerals) < MinDistToMineral(posBaseLoc2, minerals))
-                        {
-                            finalpos = posBaseLoc2;
-                        }
-
-                        return finalpos;
-                        */
 
             var minCentX = (min1.Pos.X + min2.Pos.X) / 2;
             var minCentY = (min1.Pos.Y + min2.Pos.Y) / 2;
@@ -554,17 +670,6 @@ namespace SC2Sharp
         private bool IsNeightbors(Unit min1, Unit min2)
         {
             return Dist.Distance(min1.Pos, min2.Pos) < 20;
-        }
-
-        private Base FindBaseByMineralId(ulong mineralId)
-        {
-            foreach (var b in Bases)
-            {
-                if (b.Minerals.Contains(mineralId))
-                    return b;
-            }
-
-            return null;
         }
 
         public Unit GetMainHata(List<Unit> hatches)
